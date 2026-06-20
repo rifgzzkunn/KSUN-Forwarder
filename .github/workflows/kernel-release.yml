@@ -1,4 +1,4 @@
-name: KernelSU Release Tracker
+name: KernelSU Release Monitor
 
 on:
   schedule:
@@ -6,35 +6,39 @@ on:
   workflow_dispatch:
 
 jobs:
-  check:
+  check-release:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
       - name: Get latest release
         id: release
         run: |
           curl -s https://api.github.com/repos/tiann/KernelSU/releases/latest > release.json
 
-          TAG=$(jq -r '.tag_name' release.json)
-          NAME=$(jq -r '.name' release.json)
-          URL=$(jq -r '.html_url' release.json)
-          BODY=$(jq -r '.body' release.json | head -c 800)
+          TAG=$(jq -r '.tag_name // "unknown"' release.json)
+          NAME=$(jq -r '.name // "No title"' release.json)
+          URL=$(jq -r '.html_url // ""' release.json)
+          BODY=$(jq -r '.body // ""' release.json | head -c 800)
 
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "name=$NAME" >> $GITHUB_OUTPUT
           echo "url=$URL" >> $GITHUB_OUTPUT
+
           echo "body<<EOF" >> $GITHUB_OUTPUT
           echo "$BODY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Load cache
+      - name: Load last release cache
         id: cache
         uses: actions/cache@v4
         with:
           path: last.txt
           key: kernelsu-cache
 
-      - name: Compare version
+      - name: Compare release
         id: check
         run: |
           if [ -f last.txt ]; then
@@ -49,7 +53,7 @@ jobs:
             echo "new=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Send Telegram Embed
+      - name: Send Telegram message
         if: steps.check.outputs.new == 'true'
         run: |
           TEXT="🔥 *KernelSU Release Baru*
