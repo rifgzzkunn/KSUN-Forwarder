@@ -1,45 +1,32 @@
-name: KernelSU Release Monitor
+- name: Get release + send
+  run: |
+    curl -s https://api.github.com/repos/tiann/KernelSU/releases/latest > release.json
 
-on:
-  schedule:
-    - cron: "*/30 * * * *"
-  workflow_dispatch:
+    TAG=$(jq -r '.tag_name // empty' release.json)
+    NAME=$(jq -r '.name // empty' release.json)
+    URL=$(jq -r '.html_url // empty' release.json)
 
-jobs:
-  check:
-    runs-on: ubuntu-latest
+    # FIX KUNCI: BODY HARUS DIPAKSA AMAN
+    BODY=$(jq -r '.body // ""' release.json | sed 's/"/\\"/g' | head -c 1000)
 
-    steps:
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+    if [ -z "$TAG" ]; then
+      echo "API ERROR / NO RELEASE"
+      cat release.json
+      exit 0
+    fi
 
-      - name: Get release + send if new
-        run: |
-          curl -s https://api.github.com/repos/tiann/KernelSU/releases/latest > release.json
+    if [ -f last.txt ]; then
+      OLD=$(cat last.txt)
+    else
+      OLD=""
+    fi
 
-          TAG=$(jq -r '.tag_name // empty' release.json)
-          NAME=$(jq -r '.name // empty' release.json)
-          URL=$(jq -r '.html_url // empty' release.json)
-          BODY=$(jq -r '.body // empty' release.json | head -c 800)
+    if [ "$OLD" = "$TAG" ]; then
+      echo "NO NEW RELEASE"
+      exit 0
+    fi
 
-          if [ -z "$TAG" ]; then
-            echo "No release found or API error"
-            cat release.json
-            exit 0
-          fi
-
-          if [ -f last.txt ]; then
-            OLD=$(cat last.txt)
-          else
-            OLD=""
-          fi
-
-          if [ "$OLD" = "$TAG" ]; then
-            echo "No new release"
-            exit 0
-          fi
-
-          TEXT="🔥 KernelSU Release Baru
+    TEXT="🔥 KernelSU Release Baru
 
 Name: $NAME
 Tag: $TAG
@@ -48,8 +35,8 @@ $BODY
 
 Link: $URL"
 
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.CHAT_ID }}" \
-            -d text="$TEXT"
+    curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+      -d chat_id="${{ secrets.CHAT_ID }}" \
+      -d text="$TEXT"
 
-          echo "$TAG" > last.txt
+    echo "$TAG" > last.txt
