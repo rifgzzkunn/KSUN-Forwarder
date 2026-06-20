@@ -1,0 +1,75 @@
+name: KernelSU Release Tracker
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get latest release
+        id: release
+        run: |
+          curl -s https://api.github.com/repos/tiann/KernelSU/releases/latest > release.json
+
+          TAG=$(jq -r '.tag_name' release.json)
+          NAME=$(jq -r '.name' release.json)
+          URL=$(jq -r '.html_url' release.json)
+          BODY=$(jq -r '.body' release.json | head -c 800)
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Load cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: last.txt
+          key: kernelsu-cache
+
+      - name: Compare version
+        id: check
+        run: |
+          if [ -f last.txt ]; then
+            OLD=$(cat last.txt)
+          else
+            OLD=""
+          fi
+
+          if [ "$OLD" != "${{ steps.release.outputs.tag }}" ]; then
+            echo "new=true" >> $GITHUB_OUTPUT
+          else
+            echo "new=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Telegram Embed
+        if: steps.check.outputs.new == 'true'
+        run: |
+          TEXT="🔥 *KernelSU Release Baru*
+
+*Name:* ${{ steps.release.outputs.name }}
+*Tag:* \`${{ steps.release.outputs.tag }}\`
+
+${{ steps.release.outputs.body }}
+
+🔗 [Open Release](${{ steps.release.outputs.url }})"
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.CHAT_ID }}" \
+            -d parse_mode="Markdown" \
+            -d text="$TEXT"
+
+          echo "${{ steps.release.outputs.tag }}" > last.txt
+
+      - name: Save cache
+        uses: actions/cache@v4
+        with:
+          path: last.txt
+          key: kernelsu-cache
